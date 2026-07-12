@@ -1,0 +1,129 @@
+@import "tailwindcss";
+
+/* ── RECCE field-dossier design system ──────────────────────────────
+   Client theater: khaki field-report paper, ink, signal orange.
+   Consultant theater: dark ops olive, phosphor text, same orange.  */
+
+:root {
+  --paper: #edeae0;
+  --paper-raised: #f5f2ea;
+  --ink: #21201b;
+  --ink-soft: #6b6759;
+  --line: #c9c4b4;
+  --olive: #58613a;
+  --olive-deep: #1d2019;
+  --ops: #16180f;
+  --ops-raised: #1f2316;
+  --ops-line: #3a4028;
+  --phosphor: #d6dcc0;
+  --phosphor-soft: #8b9270;
+  --signal: #e8590c;
+  --signal-soft: #f4c7ac;
+  --good: #4a7c42;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-raised: var(--paper-raised);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-line: var(--line);
+  --color-olive: var(--olive);
+  --color-olive-deep: var(--olive-deep);
+  --color-ops: var(--ops);
+  --color-ops-raised: var(--ops-raised);
+  --color-ops-line: var(--ops-line);
+  --color-phosphor: var(--phosphor);
+  --color-phosphor-soft: var(--phosphor-soft);
+  --color-signal: var(--signal);
+  --color-signal-soft: var(--signal-soft);
+  --color-good: var(--good);
+  --font-sans: var(--font-archivo);
+  --font-display: var(--font-saira);
+  --font-mono: var(--font-plex-mono);
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-archivo), sans-serif;
+  /* faint survey-grid texture over the paper */
+  background-image:
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 32px 32px;
+  background-position: -1px -1px;
+}
+
+/* stamped micro-label: mono, tracked-out, uppercase */
+.stamp {
+  font-family: var(--font-plex-mono), monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* dossier card with reticle corner ticks */
+.reticle {
+  position: relative;
+}
+.reticle::before,
+.reticle::after {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  pointer-events: none;
+}
+.reticle::before {
+  top: -1px;
+  left: -1px;
+  border-top: 2px solid currentColor;
+  border-left: 2px solid currentColor;
+}
+.reticle::after {
+  bottom: -1px;
+  right: -1px;
+  border-bottom: 2px solid currentColor;
+  border-right: 2px solid currentColor;
+}
+
+/* staggered entrance for steps/cards */
+@keyframes field-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.field-in {
+  animation: field-in 0.35s ease-out both;
+}
+
+/* radar sweep "thinking" indicator */
+@keyframes sweep {
+  0% { opacity: 0.25; }
+  50% { opacity: 1; }
+  100% { opacity: 0.25; }
+}
+.sweep-dot {
+  animation: sweep 1.1s ease-in-out infinite;
+}
+.sweep-dot:nth-child(2) { animation-delay: 0.18s; }
+.sweep-dot:nth-child(3) { animation-delay: 0.36s; }
+
+/* the theater flip: consultant panel scanline atmosphere */
+.ops-atmosphere {
+  background-color: var(--ops);
+  background-image:
+    repeating-linear-gradient(0deg, rgba(214, 220, 192, 0.03) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse at 20% -10%, rgba(88, 97, 58, 0.35), transparent 55%);
+}
+
+/* big meter numerals never jitter as they recalc */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
