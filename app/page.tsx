@@ -21,6 +21,22 @@ import type {
   WorkflowModel,
 } from "@/lib/types";
 import { computeWaste, fmtSGD } from "@/lib/quote";
+import { renderDossierDoc } from "@/lib/dossier-doc";
+
+// Open a self-contained HTML string as a full page in a new browser tab.
+// If a pre-opened window is passed (to survive pop-up blockers on async flows),
+// navigate that one; otherwise open fresh. Returns the window (or null if blocked).
+function openHtmlInNewTab(html: string, existing?: Window | null): Window | null {
+  const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+  const win = existing && !existing.closed ? existing : window.open("", "_blank");
+  if (win) {
+    win.location.href = url;
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } else {
+    URL.revokeObjectURL(url);
+  }
+  return win;
+}
 
 type Analysis = AnalyzeResponse & { below_minimum_engagement: boolean };
 
@@ -96,6 +112,7 @@ export default function Home() {
   // so the model sees a consistent JSON conversation (prose is display-only).
   const apiHistoryRef = useRef<ChatMessage[]>([]);
   const chatEnd = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     const w = window as unknown as {
@@ -140,6 +157,20 @@ export default function Home() {
       /* storage full — non-fatal */
     }
   }, [messages, model, analysis, view, protoResults, codeText]);
+
+  // Keep the newest message and the typing indicator in view after every turn.
+  useEffect(() => {
+    chatEnd.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages, busy]);
+
+  // Auto-grow the input as typing/voice fills it; shrink back when it's cleared.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    // floor at ~2 rows so the empty box doesn't collapse; cap then scroll.
+    el.style.height = Math.min(Math.max(el.scrollHeight, 56), 160) + "px";
+  }, [input]);
 
   function toggleVoice() {
     if (listening) {
@@ -211,7 +242,6 @@ export default function Home() {
       setMessages([...next, { role: "assistant", content: "Connection hiccup — try that again?" }]);
     } finally {
       setBusy(false);
-      setTimeout(() => chatEnd.current?.scrollIntoView({ behavior: "smooth" }), 50);
     }
   }
 
@@ -256,10 +286,19 @@ export default function Home() {
     }
   }
 
-  async function draftPrototypeCode() {
+  const protoWinRef = useRef<Window | null>(null);
+
+  // Build the pre-prototype and open it as a full page in a new tab.
+  async function openPrototype() {
     if (codeBusy) return;
     setCodeBusy(true);
-    setCodeText("");
+    // Open the tab NOW, inside the click gesture, so the async result isn't pop-up blocked.
+    const loading = `<!doctype html><meta charset="utf-8"><title>Building your prototype…</title><body style="margin:0;height:100vh;display:grid;place-items:center;background:#14160e;color:#9aa27e;font-family:ui-monospace,Menlo,monospace"><div style="text-align:center"><div style="color:#e8590c;letter-spacing:.2em;font-size:12px">■ RECCE</div><p style="margin-top:10px;letter-spacing:.12em">BUILDING YOUR PROTOTYPE…</p></div></body>`;
+    protoWinRef.current = window.open("", "_blank");
+    if (protoWinRef.current) {
+      protoWinRef.current.document.write(loading);
+      protoWinRef.current.document.close();
+    }
     try {
       // ?demo=1 → serve the hand-authored hero prototype (reliable stage beat);
       // any other session (e.g. a judge trialing their own workflow) → live generation.
@@ -277,13 +316,26 @@ export default function Home() {
         const { done, value } = await reader.read();
         if (done) break;
         acc += decoder.decode(value, { stream: true });
-        setCodeText(acc);
       }
+      const clean = acc.replace(/^```[a-z]*\n?/i, "").replace(/\n?```\s*$/, "");
+      setCodeText(clean);
+      openHtmlInNewTab(clean, protoWinRef.current);
     } catch {
       setCodeText("[generation failed — try again]");
+      protoWinRef.current?.close();
     } finally {
       setCodeBusy(false);
     }
+  }
+
+  // Reopen the already-built prototype in a fresh tab (its own click gesture).
+  function reopenPrototype() {
+    if (codeText) openHtmlInNewTab(codeText);
+  }
+
+  // Open the consultant dossier as a full-page report in a new tab (deterministic, no LLM call).
+  function openDossier() {
+    if (analysis) openHtmlInNewTab(renderDossierDoc(model, waste, analysis));
   }
 
   function patchStep(id: string, field: "minutes_per_occurrence" | "frequency_per_month", value: number) {
@@ -412,6 +464,7 @@ export default function Home() {
               </button>
             )}
             <textarea
+              ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
@@ -423,7 +476,7 @@ export default function Home() {
               }}
               rows={2}
               placeholder={listening ? "listening — just talk, ramble away…" : "Describe your workflow… or hit 🎙 and talk"}
-              className={`flex-1 resize-none border px-3 py-2 text-sm text-ink placeholder:text-ink-soft/50 focus:outline-none ${
+              className={`flex-1 resize-none overflow-y-auto border px-3 py-2 text-sm text-ink placeholder:text-ink-soft/50 focus:outline-none ${
                 listening ? "border-signal bg-signal-soft/20" : "border-line bg-paper focus:border-signal"
               }`}
             />
@@ -438,13 +491,7 @@ export default function Home() {
         </section>
 
         {/* ── RIGHT: the intel (map / brief / dossier) ─────────── */}
-        <section
-          className={`reticle flex h-[82vh] flex-col border-2 transition-colors duration-500 ${
-            consultantView
-              ? "ops-atmosphere border-ops-line text-phosphor shadow-[6px_6px_0_0_var(--ops-line)]"
-              : "border-ink bg-paper-raised text-ink shadow-[6px_6px_0_0_var(--line)]"
-          }`}
-        >
+        <section className="reticle flex h-[82vh] flex-col border-2 border-ink bg-paper-raised text-ink shadow-[6px_6px_0_0_var(--line)]">
           <div className="flex-1 overflow-y-auto p-5">
           {!analysis && (
             <div className="space-y-5">
@@ -614,39 +661,32 @@ export default function Home() {
                     )}
                   </div>
                 </div>
-                {codeText === null ? (
-                  <button
-                    onClick={draftPrototypeCode}
-                    disabled={codeBusy}
-                    className="stamp mt-2 w-full border border-ink py-2.5 text-ink transition-colors hover:bg-ink hover:text-paper disabled:opacity-40"
-                  >
-                    ⚡ Build my prototype — click-through preview
-                  </button>
-                ) : codeBusy ? (
-                  <div className="mt-3 border-2 border-ops-line bg-ops p-3">
-                    <p className="stamp mb-2 flex items-center justify-between text-phosphor-soft">
-                      <span>Sonnet 5 · building your prototype</span>
-                      <span className="sweep-dot inline-block h-1.5 w-1.5 rounded-full bg-signal" />
-                    </p>
-                    <pre className="max-h-40 overflow-hidden whitespace-pre-wrap font-mono text-[10px] leading-relaxed text-phosphor-soft">
-                      {codeText.slice(-900)}
-                      <span className="text-signal">▌</span>
-                    </pre>
+                {codeBusy ? (
+                  <div className="stamp mt-2 flex w-full items-center justify-center gap-2 border-2 border-ink py-2.5 text-ink-soft">
+                    <span className="sweep-dot inline-block h-1.5 w-1.5 rounded-full bg-signal" />
+                    Building your prototype in a new tab…
                   </div>
+                ) : codeText === null ? (
+                  <button
+                    onClick={openPrototype}
+                    className="stamp mt-2 w-full border-2 border-ink bg-ink py-2.5 text-paper transition-transform hover:translate-y-[-1px]"
+                  >
+                    ⚡ Build my prototype — opens as a live tool ↗
+                  </button>
                 ) : (
-                  <div className="mt-3">
-                    <p className="stamp mb-1.5 flex items-center justify-between text-signal">
-                      <span>Your tool — click through it</span>
-                      <button onClick={draftPrototypeCode} className="stamp text-ink-soft underline underline-offset-2 hover:text-ink">
-                        ↻ rebuild
-                      </button>
-                    </p>
-                    <iframe
-                      sandbox="allow-scripts"
-                      srcDoc={codeText.replace(/^```[a-z]*\n?/i, "").replace(/\n?```\s*$/, "")}
-                      className="h-[480px] w-full border-2 border-ink bg-white"
-                      title="pre-prototype preview"
-                    />
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      onClick={reopenPrototype}
+                      className="stamp flex-1 border-2 border-ink bg-ink py-2.5 text-paper transition-transform hover:translate-y-[-1px]"
+                    >
+                      ↗ Open my prototype
+                    </button>
+                    <button
+                      onClick={openPrototype}
+                      className="stamp border-2 border-ink px-3 py-2.5 text-ink transition-colors hover:bg-ink hover:text-paper"
+                    >
+                      ↻ rebuild
+                    </button>
                   </div>
                 )}
                 <p className="stamp mt-3 text-ink-soft/60">
@@ -659,98 +699,79 @@ export default function Home() {
           {analysis && consultantView && (
             <div className="field-in space-y-5">
               <div className="flex items-center justify-between">
-                <p className="stamp text-signal">Eyes only — consultant copy</p>
-                <p className="stamp text-phosphor-soft">same conversation · rebuilt as a build spec</p>
+                <p className="stamp text-signal">■ Eyes only — consultant copy</p>
+                <p className="stamp text-ink-soft">same conversation · rebuilt as a build spec</p>
               </div>
 
               {analysis.below_minimum_engagement && (
                 <div className="border-2 border-signal bg-signal/10 p-3">
                   <p className="stamp text-signal">⚠ Below minimum engagement</p>
-                  <p className="mt-1 text-sm text-phosphor">
+                  <p className="mt-1 text-sm text-ink">
                     Top of quote range doesn&apos;t cover estimated build cost.
                   </p>
                 </div>
               )}
 
+              {/* at-a-glance strip — the numbers, not the prose */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="border border-line bg-paper p-3">
+                  <p className="tabular font-mono text-2xl font-semibold text-signal">
+                    {analysis.consultant_dossier.build_hours_estimate}
+                    <span className="text-sm text-ink-soft">h</span>
+                  </p>
+                  <p className="stamp mt-1 text-ink-soft">est. build</p>
+                </div>
+                <div className="border border-line bg-paper p-3">
+                  <p className="tabular font-mono text-2xl font-semibold text-ink">
+                    {analysis.consultant_dossier.feasibility.length}
+                  </p>
+                  <p className="stamp mt-1 text-ink-soft">steps scoped</p>
+                </div>
+                <div className="border border-line bg-paper p-3">
+                  <p className="tabular font-mono text-2xl font-semibold text-ink">
+                    {analysis.consultant_dossier.risk_flags.length}
+                  </p>
+                  <p className="stamp mt-1 text-ink-soft">risk flags</p>
+                </div>
+              </div>
+
+              {/* feasibility at a glance — badges + step id, no wall of method text */}
               <div>
-                <p className="stamp mb-2 flex items-center gap-2 text-phosphor-soft">
-                  <span className="inline-block h-px w-6 bg-phosphor-soft" />
-                  Feasibility, per step
-                </p>
+                <p className="stamp mb-2 text-ink-soft">Feasibility · per step</p>
                 <div className="space-y-1.5">
                   {analysis.consultant_dossier.feasibility.map((f) => (
-                    <div key={f.step_id} className="flex items-start gap-2 border border-ops-line bg-ops-raised p-2.5 text-sm">
+                    <div key={f.step_id} className="flex items-center gap-2.5 text-sm">
                       <span
-                        className={`stamp mt-0.5 border px-1.5 py-0.5 ${
+                        className={`stamp border px-1.5 py-0.5 ${
                           f.feasibility === "easy"
                             ? "border-good text-good"
                             : f.feasibility === "moderate"
                               ? "border-signal text-signal"
-                              : "border-red-400 text-red-400"
+                              : "border-red-500 text-red-600"
                         }`}
                       >
                         {f.feasibility}
                       </span>
-                      <span className="leading-relaxed">
-                        <span className="font-mono text-phosphor-soft">{f.step_id}</span> — {f.method}
-                      </span>
+                      <span className="truncate font-mono text-ink-soft">{f.step_id}</span>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="border border-ops-line bg-ops-raised p-3">
-                  <p className="stamp text-phosphor-soft">Integration surface</p>
-                  <p className="mt-1 text-sm leading-relaxed">
-                    {analysis.consultant_dossier.integration_surface.join(" · ")}
-                  </p>
-                </div>
-                <div className="border border-ops-line bg-ops-raised p-3">
-                  <p className="stamp text-phosphor-soft">Est. build</p>
-                  <p className="tabular mt-1 font-mono text-2xl font-semibold text-signal">
-                    {analysis.consultant_dossier.build_hours_estimate}
-                    <span className="text-sm text-phosphor-soft"> hrs</span>
-                  </p>
-                </div>
-              </div>
-
               <div>
-                <p className="stamp mb-1 text-phosphor-soft">Risk flags</p>
-                <ul className="space-y-1 text-sm">
-                  {analysis.consultant_dossier.risk_flags.map((r, i) => (
-                    <li key={i} className="flex gap-2">
-                      <span className="text-signal">▲</span> {r}
-                    </li>
-                  ))}
-                </ul>
+                <p className="stamp mb-1 text-ink-soft">Recommended first build</p>
+                <p className="text-sm font-medium text-signal">→ {analysis.solution_proposal.recommended}</p>
               </div>
 
-              <div>
-                <p className="stamp mb-1 text-phosphor-soft">Resolve on the call</p>
-                <ul className="space-y-1 text-sm">
-                  {analysis.consultant_dossier.open_questions_for_call.map((q, i) => (
-                    <li key={i} className="flex gap-2">
-                      <span className="font-mono text-phosphor-soft">{String(i + 1).padStart(2, "0")}</span> {q}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className="border-2 border-ops-line p-4">
-                <p className="stamp mb-2 text-phosphor-soft">Proposed approaches</p>
-                <div className="space-y-2">
-                  {analysis.solution_proposal.approaches.map((a) => (
-                    <div key={a.name} className="text-sm leading-relaxed">
-                      <span className="font-semibold text-phosphor">{a.name}</span> — {a.description}{" "}
-                      <span className="text-phosphor-soft">({a.tradeoffs})</span>
-                    </div>
-                  ))}
-                </div>
-                <p className="mt-3 border-t border-ops-line pt-2 text-sm font-medium text-signal">
-                  → {analysis.solution_proposal.recommended}
-                </p>
-              </div>
+              <button
+                onClick={openDossier}
+                className="stamp w-full border-2 border-signal bg-signal/10 py-3 text-signal transition-colors hover:bg-signal hover:text-paper"
+              >
+                ↗ Open the full dossier
+              </button>
+              <p className="stamp text-ink-soft/60">
+                method per step · integration surface · risk detail · call agenda · proposed approaches — opens as a full report
+              </p>
             </div>
           )}
           </div>
