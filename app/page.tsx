@@ -77,6 +77,9 @@ export default function Home() {
   }, [busy]);
 
   function resetSession() {
+    try {
+      localStorage.removeItem("recce-session-v1");
+    } catch {}
     apiHistoryRef.current = [];
     setMessages([]);
     setModel(emptyModel);
@@ -101,6 +104,42 @@ export default function Home() {
     };
     setVoiceSupported(Boolean(w.SpeechRecognition || w.webkitSpeechRecognition));
   }, []);
+
+  // Session survives refresh (stored in THIS browser only — server keeps nothing).
+  // Cleared solely by the ↺ new button.
+  const STORAGE_KEY = "recce-session-v1";
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const s = JSON.parse(raw);
+      if (s.messages?.length) setMessages(s.messages);
+      if (s.model) setModel(s.model);
+      if (s.analysis) setAnalysis(s.analysis);
+      if (s.view) setView(s.view);
+      if (s.protoResults) setProtoResults(s.protoResults);
+      if (typeof s.codeText === "string") setCodeText(s.codeText);
+      if (s.apiHistory) apiHistoryRef.current = s.apiHistory;
+    } catch {
+      /* corrupt store — start fresh */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (messages.length === 0) return;
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          messages, model, analysis, view, protoResults, codeText,
+          apiHistory: apiHistoryRef.current,
+        })
+      );
+    } catch {
+      /* storage full — non-fatal */
+    }
+  }, [messages, model, analysis, view, protoResults, codeText]);
 
   function toggleVoice() {
     if (listening) {
@@ -191,9 +230,13 @@ export default function Home() {
     }
   }
 
+  const [heroStep, setHeroStep] = useState(1);
+  const [heroSeconds, setHeroSeconds] = useState(0);
+
   async function runPrototype() {
     setProtoBusy(true);
     setProtoError(null);
+    const t0 = Date.now();
     try {
       const res = await fetch("/api/automate", {
         method: "POST",
@@ -201,8 +244,11 @@ export default function Home() {
         body: JSON.stringify({}), // demo defaults: staged template + master doc + 3 students
       });
       const data = await res.json();
-      if (data.ok) setProtoResults(data.results);
-      else setProtoError(data.error || "automation failed");
+      if (data.ok) {
+        setProtoResults(data.results);
+        setHeroSeconds(Math.round((Date.now() - t0) / 1000));
+        setHeroStep(4);
+      } else setProtoError(data.error || "automation failed");
     } catch {
       setProtoError("connection failed");
     } finally {
@@ -285,7 +331,7 @@ export default function Home() {
                   view === "client" ? "bg-ink text-paper" : "bg-transparent text-ink hover:bg-line/40"
                 }`}
               >
-                Field report
+                Client brief
               </button>
               <button
                 onClick={() => setView("consultant")}
@@ -293,7 +339,7 @@ export default function Home() {
                   view === "consultant" ? "bg-signal text-paper" : "bg-transparent text-ink hover:bg-line/40"
                 }`}
               >
-                Eyes only
+                Consultant dossier
               </button>
             </div>
           )}
@@ -306,7 +352,9 @@ export default function Home() {
         <section className="reticle flex h-[82vh] flex-col border-2 border-ink bg-paper-raised text-ink shadow-[6px_6px_0_0_var(--line)]">
           <div className="flex items-center justify-between border-b border-line px-4 py-2">
             <span className="stamp text-ink-soft">Debrief transcript</span>
-            <span className="stamp text-ink-soft/60">REC ●</span>
+            <span className={`stamp ${listening ? "sweep-dot text-signal" : "text-ink-soft/40"}`}>
+              {listening ? "REC ●" : "STANDBY ○"}
+            </span>
           </div>
           <div className="flex-1 space-y-3 overflow-y-auto p-4">
             {messages.length === 0 && (
@@ -388,12 +436,13 @@ export default function Home() {
 
         {/* ── RIGHT: the intel (map / brief / dossier) ─────────── */}
         <section
-          className={`reticle h-[82vh] overflow-y-auto border-2 p-5 transition-colors duration-500 ${
+          className={`reticle flex h-[82vh] flex-col border-2 transition-colors duration-500 ${
             consultantView
               ? "ops-atmosphere border-ops-line text-phosphor shadow-[6px_6px_0_0_var(--ops-line)]"
               : "border-ink bg-paper-raised text-ink shadow-[6px_6px_0_0_var(--line)]"
           }`}
         >
+          <div className="flex-1 overflow-y-auto p-5">
           {!analysis && (
             <div className="space-y-5">
               <WasteMeter waste={waste} hourly={model.hourly_value_sgd} />
@@ -487,53 +536,114 @@ export default function Home() {
               <div className="border border-line bg-paper p-4">
                 <p className="stamp mb-2 text-signal">Your pre-prototype</p>
                 <p className="text-sm leading-relaxed text-ink-soft">{analysis.client_brief.prototype_pitch}</p>
-                {!protoResults && (
-                  <button
-                    onClick={runPrototype}
-                    disabled={protoBusy}
-                    className="stamp mt-3 w-full border-2 border-ink bg-ink py-3 text-paper transition-transform hover:translate-y-[-1px] disabled:opacity-40"
-                  >
-                    {protoBusy ? "Running your automation…" : "▶ Run the pre-prototype — for real"}
-                  </button>
-                )}
-                {protoError && <p className="mt-2 text-sm text-signal">{protoError}</p>}
-                {protoResults && (
-                  <div className="field-in mt-3 border border-good/50 bg-good/5 p-3">
-                    <p className="stamp mb-2 text-good">✓ Live run complete — real files, created just now</p>
-                    <div className="space-y-1">
-                      {protoResults.map((r) => (
-                        <div key={r.student} className="flex items-center gap-3 text-sm">
-                          <span className="w-20 font-mono font-medium">{r.student}</span>
-                          <a href={r.kamiLink} target="_blank" className="text-signal underline underline-offset-2">
-                            open in Kami
-                          </a>
-                          <a href={r.driveLink} target="_blank" className="text-ink-soft underline underline-offset-2">
-                            Drive
-                          </a>
-                        </div>
-                      ))}
-                    </div>
-                    <p className="stamp mt-2 text-ink-soft/70">…and the master doc just updated itself.</p>
+                {/* the hero run as a click-through wizard — real automation fires at step 3 */}
+                <div className="mt-3 border-2 border-ink bg-paper">
+                  <div className="flex border-b border-line">
+                    {["Worksheet", "Students", "Run it", "Links"].map((label, i) => (
+                      <div
+                        key={label}
+                        className={`stamp flex-1 border-r border-line px-2 py-2 text-center last:border-r-0 ${
+                          heroStep === i + 1 ? "bg-ink text-paper" : heroStep > i + 1 ? "text-good" : "text-ink-soft/50"
+                        }`}
+                      >
+                        {heroStep > i + 1 ? "✓ " : `${i + 1} · `}{label}
+                      </div>
+                    ))}
                   </div>
-                )}
+                  <div className="p-4">
+                    {heroStep === 1 && (
+                      <div className="field-in space-y-3">
+                        <p className="text-sm">This week&apos;s worksheet — copies get made automatically for every student.</p>
+                        <div className="border border-line bg-paper-raised p-3 text-sm">
+                          📄 <span className="font-mono">Recce Demo — Worksheet Template.pdf</span>
+                          <span className="stamp float-right text-ink-soft">your template</span>
+                        </div>
+                        <button onClick={() => setHeroStep(2)} className="stamp w-full border-2 border-ink bg-ink py-2.5 text-paper">
+                          Use this worksheet →
+                        </button>
+                      </div>
+                    )}
+                    {heroStep === 2 && (
+                      <div className="field-in space-y-3">
+                        <p className="text-sm">Your students — pulled from your list, edit anytime.</p>
+                        <div className="border border-line bg-paper-raised p-3 text-sm font-mono">
+                          Aisha · Marcus · Wei Lin <span className="stamp text-ink-soft">(demo roster)</span>
+                        </div>
+                        <button onClick={() => setHeroStep(3)} className="stamp w-full border-2 border-ink bg-ink py-2.5 text-paper">
+                          Looks right →
+                        </button>
+                      </div>
+                    )}
+                    {heroStep === 3 && (
+                      <div className="field-in space-y-3">
+                        <p className="text-sm">
+                          One click does the whole round: copy per student, share, build every Kami link,
+                          update the master doc. <span className="font-medium">For real — watch your Drive.</span>
+                        </p>
+                        <button
+                          onClick={runPrototype}
+                          disabled={protoBusy}
+                          className="stamp w-full border-2 border-ink bg-signal py-3 text-white disabled:opacity-40"
+                        >
+                          {protoBusy ? "Running your automation…" : "▶ Run it — for real"}
+                        </button>
+                        {protoError && <p className="text-sm text-signal">{protoError}</p>}
+                      </div>
+                    )}
+                    {heroStep === 4 && protoResults && (
+                      <div className="field-in space-y-2">
+                        <p className="stamp text-good">✓ Done in {heroSeconds}s — this used to be your Sunday</p>
+                        <div className="space-y-1">
+                          {protoResults.map((r) => (
+                            <div key={r.student} className="flex items-center gap-3 text-sm">
+                              <span className="w-20 font-mono font-medium">{r.student}</span>
+                              <a href={r.kamiLink} target="_blank" className="text-signal underline underline-offset-2">
+                                open in Kami
+                              </a>
+                              <a href={r.driveLink} target="_blank" className="text-ink-soft underline underline-offset-2">
+                                Drive
+                              </a>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="stamp text-ink-soft/70">…and the master doc just updated itself — real files, created just now.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
                 {codeText === null ? (
                   <button
                     onClick={draftPrototypeCode}
                     disabled={codeBusy}
                     className="stamp mt-2 w-full border border-ink py-2.5 text-ink transition-colors hover:bg-ink hover:text-paper disabled:opacity-40"
                   >
-                    ⚡ Draft my prototype code — live
+                    ⚡ Build my prototype — click-through preview
                   </button>
-                ) : (
+                ) : codeBusy ? (
                   <div className="mt-3 border-2 border-ops-line bg-ops p-3">
                     <p className="stamp mb-2 flex items-center justify-between text-phosphor-soft">
-                      <span>Prototype draft · Sonnet 5{codeBusy && " · writing"}</span>
-                      {codeBusy && <span className="sweep-dot inline-block h-1.5 w-1.5 rounded-full bg-signal" />}
+                      <span>Sonnet 5 · building your prototype</span>
+                      <span className="sweep-dot inline-block h-1.5 w-1.5 rounded-full bg-signal" />
                     </p>
-                    <pre className="max-h-72 overflow-y-auto whitespace-pre-wrap font-mono text-xs leading-relaxed text-phosphor">
-                      {codeText}
-                      {codeBusy && <span className="text-signal">▌</span>}
+                    <pre className="max-h-40 overflow-hidden whitespace-pre-wrap font-mono text-[10px] leading-relaxed text-phosphor-soft">
+                      {codeText.slice(-900)}
+                      <span className="text-signal">▌</span>
                     </pre>
+                  </div>
+                ) : (
+                  <div className="mt-3">
+                    <p className="stamp mb-1.5 flex items-center justify-between text-signal">
+                      <span>Your tool — click through it</span>
+                      <button onClick={draftPrototypeCode} className="stamp text-ink-soft underline underline-offset-2 hover:text-ink">
+                        ↻ rebuild
+                      </button>
+                    </p>
+                    <iframe
+                      sandbox="allow-scripts"
+                      srcDoc={codeText.replace(/^```[a-z]*\n?/i, "").replace(/\n?```\s*$/, "")}
+                      className="h-[480px] w-full border-2 border-ink bg-white"
+                      title="pre-prototype preview"
+                    />
                   </div>
                 )}
                 <p className="stamp mt-3 text-ink-soft/60">
@@ -640,6 +750,7 @@ export default function Home() {
               </div>
             </div>
           )}
+          </div>
         </section>
       </div>
     </main>
