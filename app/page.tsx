@@ -1,6 +1,19 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+// Minimal Web Speech API surface (not in TS's DOM lib)
+interface SpeechRecognitionLike {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  start(): void;
+  stop(): void;
+  onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void) | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+}
+type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
 import type {
   AnalyzeResponse,
   ChatMessage,
@@ -42,7 +55,47 @@ export default function Home() {
   const [protoError, setProtoError] = useState<string | null>(null);
   const [codeText, setCodeText] = useState<string | null>(null);
   const [codeBusy, setCodeBusy] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState(false);
+  const recogRef = useRef<SpeechRecognitionLike | null>(null);
+  const baseTextRef = useRef("");
   const chatEnd = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const w = window as unknown as {
+      SpeechRecognition?: SpeechRecognitionCtor;
+      webkitSpeechRecognition?: SpeechRecognitionCtor;
+    };
+    setVoiceSupported(Boolean(w.SpeechRecognition || w.webkitSpeechRecognition));
+  }, []);
+
+  function toggleVoice() {
+    if (listening) {
+      recogRef.current?.stop();
+      return;
+    }
+    const w = window as unknown as {
+      SpeechRecognition?: SpeechRecognitionCtor;
+      webkitSpeechRecognition?: SpeechRecognitionCtor;
+    };
+    const Ctor = w.SpeechRecognition || w.webkitSpeechRecognition;
+    if (!Ctor) return;
+    const recog = new Ctor();
+    recog.lang = "en-SG";
+    recog.continuous = true;
+    recog.interimResults = true;
+    baseTextRef.current = input ? input.replace(/\s*$/, "") + " " : "";
+    recog.onresult = (e) => {
+      let text = "";
+      for (let i = 0; i < e.results.length; i++) text += e.results[i][0].transcript;
+      setInput(baseTextRef.current + text);
+    };
+    recog.onend = () => setListening(false);
+    recog.onerror = () => setListening(false);
+    recogRef.current = recog;
+    setListening(true);
+    recog.start();
+  }
 
   const waste = computeWaste(model);
 
@@ -235,18 +288,34 @@ export default function Home() {
             <div ref={chatEnd} />
           </div>
           <div className="flex gap-2 border-t-2 border-ink p-3">
+            {voiceSupported && (
+              <button
+                onClick={toggleVoice}
+                title={listening ? "Stop dictation" : "Speak instead of typing"}
+                className={`stamp border-2 px-3 transition-colors ${
+                  listening
+                    ? "border-signal bg-signal text-white"
+                    : "border-ink bg-paper text-ink hover:bg-line/40"
+                }`}
+              >
+                {listening ? "● REC" : "🎙 talk"}
+              </button>
+            )}
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
+                  if (listening) recogRef.current?.stop();
                   send();
                 }
               }}
               rows={2}
-              placeholder="Describe your workflow…"
-              className="flex-1 resize-none border border-line bg-paper px-3 py-2 text-sm text-ink placeholder:text-ink-soft/50 focus:border-signal focus:outline-none"
+              placeholder={listening ? "listening — just talk, ramble away…" : "Describe your workflow… or hit 🎙 and talk"}
+              className={`flex-1 resize-none border px-3 py-2 text-sm text-ink placeholder:text-ink-soft/50 focus:outline-none ${
+                listening ? "border-signal bg-signal-soft/20" : "border-line bg-paper focus:border-signal"
+              }`}
             />
             <button
               onClick={send}
