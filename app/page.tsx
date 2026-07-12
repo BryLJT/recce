@@ -40,6 +40,8 @@ export default function Home() {
     { student: string; kamiLink: string; driveLink: string }[] | null
   >(null);
   const [protoError, setProtoError] = useState<string | null>(null);
+  const [codeText, setCodeText] = useState<string | null>(null);
+  const [codeBusy, setCodeBusy] = useState(false);
   const chatEnd = useRef<HTMLDivElement>(null);
 
   const waste = computeWaste(model);
@@ -104,6 +106,33 @@ export default function Home() {
       setProtoError("connection failed");
     } finally {
       setProtoBusy(false);
+    }
+  }
+
+  async function draftPrototypeCode() {
+    if (codeBusy) return;
+    setCodeBusy(true);
+    setCodeText("");
+    try {
+      const res = await fetch("/api/prototype", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model, proposal: analysis?.solution_proposal }),
+      });
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("no stream");
+      const decoder = new TextDecoder();
+      let acc = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        acc += decoder.decode(value, { stream: true });
+        setCodeText(acc);
+      }
+    } catch {
+      setCodeText("[generation failed — try again]");
+    } finally {
+      setCodeBusy(false);
     }
   }
 
@@ -357,6 +386,26 @@ export default function Home() {
                       ))}
                     </div>
                     <p className="stamp mt-2 text-ink-soft/70">…and the master doc just updated itself.</p>
+                  </div>
+                )}
+                {codeText === null ? (
+                  <button
+                    onClick={draftPrototypeCode}
+                    disabled={codeBusy}
+                    className="stamp mt-2 w-full border border-ink py-2.5 text-ink transition-colors hover:bg-ink hover:text-paper disabled:opacity-40"
+                  >
+                    ⚡ Draft my prototype code — live
+                  </button>
+                ) : (
+                  <div className="mt-3 border-2 border-ops-line bg-ops p-3">
+                    <p className="stamp mb-2 flex items-center justify-between text-phosphor-soft">
+                      <span>Prototype draft · Sonnet 5{codeBusy && " · writing"}</span>
+                      {codeBusy && <span className="sweep-dot inline-block h-1.5 w-1.5 rounded-full bg-signal" />}
+                    </p>
+                    <pre className="max-h-72 overflow-y-auto whitespace-pre-wrap font-mono text-xs leading-relaxed text-phosphor">
+                      {codeText}
+                      {codeBusy && <span className="text-signal">▌</span>}
+                    </pre>
                   </div>
                 )}
                 <p className="stamp mt-3 text-ink-soft/60">
