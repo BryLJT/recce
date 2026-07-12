@@ -58,8 +58,40 @@ export default function Home() {
   const [listening, setListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [statusIdx, setStatusIdx] = useState(0);
+
+  const STATUS_LINES = [
+    "mapping your steps…",
+    "listening for tools and timings…",
+    "pricing the waste…",
+    "checking what can be automated…",
+    "choosing the one question that matters…",
+  ];
+
+  useEffect(() => {
+    if (!busy) return;
+    setStatusIdx(0);
+    const t = setInterval(() => setStatusIdx((i) => (i + 1) % STATUS_LINES.length), 2600);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy]);
+
+  function resetSession() {
+    apiHistoryRef.current = [];
+    setMessages([]);
+    setModel(emptyModel);
+    setAnalysis(null);
+    setView("client");
+    setProtoResults(null);
+    setProtoError(null);
+    setCodeText(null);
+    setInput("");
+  }
   const recogRef = useRef<SpeechRecognitionLike | null>(null);
   const baseTextRef = useRef("");
+  // API-side history: assistant turns stored as the raw JSON they emitted,
+  // so the model sees a consistent JSON conversation (prose is display-only).
+  const apiHistoryRef = useRef<ChatMessage[]>([]);
   const chatEnd = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -113,10 +145,16 @@ export default function Home() {
     setInput("");
     setBusy(true);
     try {
+      const apiMessages: ChatMessage[] = [
+        ...apiHistoryRef.current,
+        { role: "user", content: text },
+      ];
       const res = await fetch("/api/elicit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: next }),
+        // model rides along so the agent UPDATES it (incl. the client's own
+        // number edits) instead of re-deriving everything from prose
+        body: JSON.stringify({ messages: apiMessages, model }),
       });
       const data: ElicitResponse & { mock?: boolean; error?: string } = await res.json();
       if (data.error) {
@@ -125,6 +163,10 @@ export default function Home() {
         if (data.mock) setMock(true);
         setModel(data.model);
         setMessages([...next, { role: "assistant", content: data.message }]);
+        apiHistoryRef.current = [
+          ...apiMessages,
+          { role: "assistant", content: JSON.stringify({ message: data.message, model: data.model }) },
+        ];
       }
     } catch {
       setMessages([...next, { role: "assistant", content: "Connection hiccup — try that again?" }]);
@@ -225,6 +267,16 @@ export default function Home() {
               </p>
             </div>
           </div>
+          <div className="flex items-center gap-2">
+          {messages.length > 0 && (
+            <button
+              onClick={resetSession}
+              title="Start a fresh session"
+              className="stamp border border-line px-2.5 py-1.5 text-ink-soft transition-colors hover:border-ink hover:text-ink"
+            >
+              ↺ new
+            </button>
+          )}
           {analysis && (
             <div className="flex border-2 border-ink">
               <button
@@ -245,6 +297,7 @@ export default function Home() {
               </button>
             </div>
           )}
+          </div>
         </div>
       </header>
 
@@ -288,7 +341,7 @@ export default function Home() {
                 <span className="sweep-dot h-1.5 w-1.5 rounded-full bg-signal" />
                 <span className="sweep-dot h-1.5 w-1.5 rounded-full bg-signal" />
                 <span className="sweep-dot h-1.5 w-1.5 rounded-full bg-signal" />
-                <span className="stamp ml-2 text-ink-soft/60">scanning</span>
+                <span className="stamp ml-2 text-ink-soft/60">{STATUS_LINES[statusIdx]}</span>
               </div>
             )}
             <div ref={chatEnd} />
