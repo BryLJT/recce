@@ -11,7 +11,7 @@ interface SpeechRecognitionLike {
   stop(): void;
   onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void) | null;
   onend: (() => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((e: { error?: string }) => void) | null;
 }
 type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
 import type {
@@ -57,6 +57,7 @@ export default function Home() {
   const [codeBusy, setCodeBusy] = useState(false);
   const [listening, setListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   const recogRef = useRef<SpeechRecognitionLike | null>(null);
   const baseTextRef = useRef("");
   const chatEnd = useRef<HTMLDivElement>(null);
@@ -91,8 +92,13 @@ export default function Home() {
       setInput(baseTextRef.current + text);
     };
     recog.onend = () => setListening(false);
-    recog.onerror = () => setListening(false);
+    recog.onerror = (e) => {
+      console.error("speech recognition error:", e.error);
+      setVoiceError(e.error ?? "unknown");
+      setListening(false);
+    };
     recogRef.current = recog;
+    setVoiceError(null);
     setListening(true);
     recog.start();
   }
@@ -298,7 +304,7 @@ export default function Home() {
                     : "border-ink bg-paper text-ink hover:bg-line/40"
                 }`}
               >
-                {listening ? "● REC" : "🎙 talk"}
+                {listening ? "● REC" : voiceError ? `mic: ${voiceError}` : "🎙 talk"}
               </button>
             )}
             <textarea
