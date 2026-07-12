@@ -404,7 +404,7 @@ export default function Home() {
 
       <div className="mx-auto grid max-w-7xl grid-cols-1 gap-5 p-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
         {/* ── LEFT: the debrief (chat) ─────────────────────────── */}
-        <section className="reticle flex h-[82vh] flex-col border-2 border-ink bg-paper-raised text-ink shadow-[6px_6px_0_0_var(--line)]">
+        <section className="reticle flex h-[90vh] flex-col border-2 border-ink bg-paper-raised text-ink shadow-[6px_6px_0_0_var(--line)]">
           <div className="flex items-center justify-between border-b border-line px-4 py-2">
             <span className="stamp text-ink-soft">Debrief transcript</span>
             <span className={`stamp ${listening ? "sweep-dot text-signal" : "text-ink-soft/40"}`}>
@@ -415,7 +415,7 @@ export default function Home() {
             {messages.length === 0 && (
               <div className="border border-dashed border-line p-4">
                 <p className="stamp mb-1 text-signal">Begin debrief</p>
-                <p className="text-sm text-ink-soft">
+                <p className="text-base text-ink-soft">
                   Describe, in your own words, a piece of work you do over and over. Ramble away —
                   that&apos;s exactly what I&apos;m for.
                 </p>
@@ -428,7 +428,7 @@ export default function Home() {
                     {m.role === "user" ? "You" : "Recce"}
                   </p>
                   <div
-                    className={`whitespace-pre-wrap px-4 py-2.5 text-sm leading-relaxed ${
+                    className={`whitespace-pre-wrap px-4 py-2.5 text-base leading-relaxed ${
                       m.role === "user"
                         ? "border border-line bg-paper text-ink"
                         : "border-l-2 border-signal bg-signal-soft/25 text-ink"
@@ -491,7 +491,13 @@ export default function Home() {
         </section>
 
         {/* ── RIGHT: the intel (map / brief / dossier) ─────────── */}
-        <section className="reticle flex h-[82vh] flex-col border-2 border-ink bg-paper-raised text-ink shadow-[6px_6px_0_0_var(--line)]">
+        <section
+          className={`reticle flex h-[90vh] flex-col border-2 transition-colors duration-300 ${
+            consultantView
+              ? "border-ops-line bg-ops text-phosphor shadow-[6px_6px_0_0_var(--ops-line)]"
+              : "border-ink bg-paper-raised text-ink shadow-[6px_6px_0_0_var(--line)]"
+          }`}
+        >
           <div className="flex-1 overflow-y-auto p-5">
           {!analysis && (
             <div className="space-y-5">
@@ -562,7 +568,7 @@ export default function Home() {
               <h2 className="text-2xl font-bold leading-snug" style={{ fontFamily: "var(--font-saira)" }}>
                 {analysis.client_brief.headline}
               </h2>
-              <p className="text-sm leading-relaxed text-ink-soft">{analysis.client_brief.summary}</p>
+              <p className="text-base leading-relaxed text-ink-soft">{analysis.client_brief.summary}</p>
 
               <div className="border-2 border-ink bg-paper p-4">
                 <p className="stamp mb-1 text-ink-soft">The deal, plainly</p>
@@ -577,7 +583,7 @@ export default function Home() {
 
               <ul className="space-y-1.5">
                 {analysis.client_brief.fit_points.map((f) => (
-                  <li key={f.step_id} className="flex gap-2 text-sm">
+                  <li key={f.step_id} className="flex gap-2 text-base">
                     <span className="text-signal">▲</span> {f.opportunity}
                   </li>
                 ))}
@@ -585,7 +591,7 @@ export default function Home() {
 
               <div className="border border-line bg-paper p-4">
                 <p className="stamp mb-2 text-signal">Your pre-prototype</p>
-                <p className="text-sm leading-relaxed text-ink-soft">{analysis.client_brief.prototype_pitch}</p>
+                <p className="text-base leading-relaxed text-ink-soft">{analysis.client_brief.prototype_pitch}</p>
                 {/* the hero run as a click-through wizard — real automation fires at step 3 */}
                 <div className="mt-3 border-2 border-ink bg-paper">
                   <div className="flex border-b border-line">
@@ -700,13 +706,13 @@ export default function Home() {
             <div className="field-in space-y-5">
               <div className="flex items-center justify-between">
                 <p className="stamp text-signal">■ Eyes only — consultant copy</p>
-                <p className="stamp text-ink-soft">same conversation · rebuilt as a build spec</p>
+                <p className="stamp text-phosphor-soft">same conversation · rebuilt as a build spec</p>
               </div>
 
               {analysis.below_minimum_engagement && (
                 <div className="border-2 border-signal bg-signal/10 p-3">
                   <p className="stamp text-signal">⚠ Below minimum engagement</p>
-                  <p className="mt-1 text-sm text-ink">
+                  <p className="mt-1 text-base text-phosphor">
                     Top of quote range doesn&apos;t cover estimated build cost.
                   </p>
                 </div>
@@ -714,53 +720,53 @@ export default function Home() {
 
               {/* at-a-glance strip — the numbers, not the prose */}
               <div className="grid grid-cols-3 gap-3">
-                <div className="border border-line bg-paper p-3">
-                  <p className="tabular font-mono text-2xl font-semibold text-signal">
+                <div className="border border-ops-line bg-ops-raised p-3">
+                  <p className="tabular font-mono text-3xl font-semibold text-signal">
                     {analysis.consultant_dossier.build_hours_estimate}
-                    <span className="text-sm text-ink-soft">h</span>
+                    <span className="text-base text-phosphor-soft">h</span>
                   </p>
-                  <p className="stamp mt-1 text-ink-soft">est. build</p>
+                  <p className="stamp mt-1 text-phosphor-soft">est. build</p>
                 </div>
-                <div className="border border-line bg-paper p-3">
-                  <p className="tabular font-mono text-2xl font-semibold text-ink">
+                <div className="border border-ops-line bg-ops-raised p-3">
+                  <p className="tabular font-mono text-3xl font-semibold text-phosphor">
                     {analysis.consultant_dossier.feasibility.length}
                   </p>
-                  <p className="stamp mt-1 text-ink-soft">steps scoped</p>
+                  <p className="stamp mt-1 text-phosphor-soft">steps scoped</p>
                 </div>
-                <div className="border border-line bg-paper p-3">
-                  <p className="tabular font-mono text-2xl font-semibold text-ink">
+                <div className="border border-ops-line bg-ops-raised p-3">
+                  <p className="tabular font-mono text-3xl font-semibold text-phosphor">
                     {analysis.consultant_dossier.risk_flags.length}
                   </p>
-                  <p className="stamp mt-1 text-ink-soft">risk flags</p>
+                  <p className="stamp mt-1 text-phosphor-soft">risk flags</p>
                 </div>
               </div>
 
               {/* feasibility at a glance — badges + step id, no wall of method text */}
               <div>
-                <p className="stamp mb-2 text-ink-soft">Feasibility · per step</p>
-                <div className="space-y-1.5">
+                <p className="stamp mb-2 text-phosphor-soft">Feasibility · per step</p>
+                <div className="space-y-2">
                   {analysis.consultant_dossier.feasibility.map((f) => (
-                    <div key={f.step_id} className="flex items-center gap-2.5 text-sm">
+                    <div key={f.step_id} className="flex items-center gap-2.5 text-base">
                       <span
                         className={`stamp border px-1.5 py-0.5 ${
                           f.feasibility === "easy"
                             ? "border-good text-good"
                             : f.feasibility === "moderate"
                               ? "border-signal text-signal"
-                              : "border-red-500 text-red-600"
+                              : "border-red-400 text-red-400"
                         }`}
                       >
                         {f.feasibility}
                       </span>
-                      <span className="truncate font-mono text-ink-soft">{f.step_id}</span>
+                      <span className="truncate font-mono text-phosphor-soft">{f.step_id}</span>
                     </div>
                   ))}
                 </div>
               </div>
 
               <div>
-                <p className="stamp mb-1 text-ink-soft">Recommended first build</p>
-                <p className="text-sm font-medium text-signal">→ {analysis.solution_proposal.recommended}</p>
+                <p className="stamp mb-1 text-phosphor-soft">Recommended first build</p>
+                <p className="text-base font-medium text-signal">→ {analysis.solution_proposal.recommended}</p>
               </div>
 
               <button
@@ -769,7 +775,7 @@ export default function Home() {
               >
                 ↗ Open the full dossier
               </button>
-              <p className="stamp text-ink-soft/60">
+              <p className="stamp text-phosphor-soft/60">
                 method per step · integration surface · risk detail · call agenda · proposed approaches — opens as a full report
               </p>
             </div>
