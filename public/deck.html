@@ -129,7 +129,7 @@
 <footer>
   <span>RECCE · FIELD BRIEFING</span>
   <span id="counter">01 / 06</span>
-  <span>← → TO NAVIGATE</span>
+  <span>← → NAVIGATE · F FULLSCREEN</span>
 </footer>
 
 <script>
@@ -141,9 +141,17 @@
     document.getElementById("counter").textContent =
       String(i + 1).padStart(2, "0") + " / " + String(slides.length).padStart(2, "0");
   };
+  function toggleFullscreen() {
+    const el = document.documentElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    const exit = document.exitFullscreen || document.webkitExitFullscreen;
+    if (!document.fullscreenElement && !document.webkitFullscreenElement) req.call(el);
+    else exit.call(document);
+  }
   addEventListener("keydown", (e) => {
     if (["ArrowRight", " ", "PageDown"].includes(e.key)) show(i + 1);
     if (["ArrowLeft", "PageUp"].includes(e.key)) show(i - 1);
+    if (e.key === "f" || e.key === "F") toggleFullscreen();
   });
   addEventListener("click", () => show(i + 1));
 </script>

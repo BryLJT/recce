@@ -63,6 +63,8 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [view, setView] = useState<"client" | "consultant">("client");
+  // On phones we show one panel at a time: the chat, or the field report.
+  const [mobileView, setMobileView] = useState<"chat" | "report">("chat");
   const [mock, setMock] = useState(false);
   const [protoBusy, setProtoBusy] = useState(false);
   const [protoResults, setProtoResults] = useState<
@@ -404,7 +406,7 @@ export default function Home() {
 
       <div className="mx-auto grid max-w-7xl grid-cols-1 gap-5 p-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
         {/* ── LEFT: the debrief (chat) ─────────────────────────── */}
-        <section className="reticle flex h-[90vh] flex-col border-2 border-ink bg-paper-raised text-ink shadow-[6px_6px_0_0_var(--line)]">
+        <section className={`reticle h-[90vh] flex-col border-2 border-ink bg-paper-raised text-ink shadow-[6px_6px_0_0_var(--line)] lg:flex ${mobileView === "chat" ? "flex" : "hidden"}`}>
           <div className="flex items-center justify-between border-b border-line px-4 py-2">
             <span className="stamp text-ink-soft">Debrief transcript</span>
             <span className={`stamp ${listening ? "sweep-dot text-signal" : "text-ink-soft/40"}`}>
@@ -449,6 +451,18 @@ export default function Home() {
             )}
             <div ref={chatEnd} />
           </div>
+          {model.done && (
+            <button
+              onClick={() => {
+                if (!analysis) generateBrief();
+                setMobileView("report");
+              }}
+              disabled={busy}
+              className="stamp border-t-2 border-signal bg-signal py-3 text-center text-white disabled:opacity-50 lg:hidden"
+            >
+              {analysis ? "View field report →" : busy ? "Compiling…" : "Generate my value brief →"}
+            </button>
+          )}
           <div className="flex gap-2 border-t-2 border-ink p-3">
             {voiceSupported && (
               <button
@@ -492,12 +506,23 @@ export default function Home() {
 
         {/* ── RIGHT: the intel (map / brief / dossier) ─────────── */}
         <section
-          className={`reticle flex h-[90vh] flex-col border-2 transition-colors duration-300 ${
+          className={`reticle h-[90vh] flex-col border-2 transition-colors duration-300 lg:flex ${
+            mobileView === "report" ? "flex" : "hidden"
+          } ${
             consultantView
               ? "border-ops-line bg-ops text-phosphor shadow-[6px_6px_0_0_var(--ops-line)]"
               : "border-ink bg-paper-raised text-ink shadow-[6px_6px_0_0_var(--line)]"
           }`}
         >
+          {/* mobile-only: return to the chat */}
+          <button
+            onClick={() => setMobileView("chat")}
+            className={`stamp flex items-center gap-2 border-b px-4 py-2.5 text-left lg:hidden ${
+              consultantView ? "border-ops-line text-phosphor-soft" : "border-line text-ink-soft"
+            }`}
+          >
+            ← Back to the conversation
+          </button>
           <div className="flex-1 overflow-y-auto p-5">
           {!analysis && (
             <div className="space-y-5">
