@@ -261,10 +261,13 @@ export default function Home() {
     setCodeBusy(true);
     setCodeText("");
     try {
+      // ?demo=1 → serve the hand-authored hero prototype (reliable stage beat);
+      // any other session (e.g. a judge trialing their own workflow) → live generation.
+      const demo = new URLSearchParams(window.location.search).get("demo") === "1";
       const res = await fetch("/api/prototype", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model, proposal: analysis?.solution_proposal }),
+        body: JSON.stringify({ model, proposal: analysis?.solution_proposal, demo }),
       });
       const reader = res.body?.getReader();
       if (!reader) throw new Error("no stream");
